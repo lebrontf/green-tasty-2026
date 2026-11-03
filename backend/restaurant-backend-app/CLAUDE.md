@@ -21,11 +21,12 @@ export SDCT_CONF="C:/Users/Teacher/marathon-app/marathon2026-main/backend/restau
 export PYTHONUTF8=1
 S=/c/Users/Teacher/marathon-app/venv-syndicate/Scripts/syndicate.exe
 "$S" build
-"$S" deploy --deploy_name dev
+"$S" update --deploy-name dev --replace-output --update-only-resources api-handler --update-only-resources restaurant-backend-api
 ```
 
-- Змінився лише код: `syndicate update`.
-- Новий маршрут чи ресурс: `syndicate deploy`. Повторний `deploy` на цьому проєкті ще не перевірявся, тому спершу дивимось його довідку й показуємо людині, що зміниться.
+- ⚠️ Для нових маршрутів потрібен `update`, а не `deploy`: `deploy` бачить, що API вже існує, і нічого не змінює. `update` звіряє маршрути з конфігом і **видаляє** ті, яких там немає.
+- 03.11 `update` не завершився за 9 хв і був зупинений за таймаутом, хоча Lambda й маршрути вже оновились. Запускати у фоні, а результат перевіряти окремо: нові маршрути без токена мають давати 401.
+- Попередні збірки лишаються в бакеті `marathon2026-restaurant-artifacts-113969923416`.
 - API: `https://bxq1whqpm7.execute-api.us-west-2.amazonaws.com/develop`, регіон `us-west-2`.
 - Секрети не пишемо нікуди. Репозиторій публічний.
 
@@ -121,6 +122,8 @@ Handler не звертається до репозиторію. Сервіс н
 - **Гість:** `POST /guest/sessions`, `GET /guest/sessions/{id}`, страви, submit кошика, меню, `GET /guest/groups/{id}/status`, `GET /guest/invites/{token}`.
 - **Власник:** `GET /reservations/{id}/invite-token`, `GET /reservations/{id}/group`, `GET /reservations/{id}/guest-session-id`, `GET /guest/groups/{id}/sessions`, `POST /group-reservations/{id}/submit`, `DELETE /guest/groups/{id}/sessions/{sessionId}`.
 - `GET /reservations/{id}/group` немає в завданні. Він потрібен, бо `GET /guest/invites/{token}` відмовляє, коли група заповнена або вже підтверджена, а власник має відкривати екран і тоді.
+
+⚠️ `token.interceptor.ts` на фронтенді не додає токен до адрес із `/guest/`, крім `/guest/groups/{id}/sessions`. Новий ендпоінт для власника під `/guest/` потребує такого ж винятку.
 
 **Джерело контракту:** `homework-backend.md` і `models/group-orders/` фронтенду. У `swagger-endpoints.yaml` шлях submit інший (`/guest/groups/{id}/submit`), на нього не орієнтуємось.
 
