@@ -1,0 +1,75 @@
+name: AQA Quality
+
+# Fast, deterministic checks on every push and pull request that touches the AQA framework.
+# No live environment is involved - the scenarios themselves run in aqa-tests.yml.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "aqa/restaurant-aqa-framework/**"
+      - ".github/workflows/aqa-quality.yml"
+
+  push:
+    branches:
+      - main
+    paths:
+      - "aqa/restaurant-aqa-framework/**"
+      - ".github/workflows/aqa-quality.yml"
+
+concurrency:
+  group: aqa-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: aqa/restaurant-aqa-framework
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Local junk must never be committed: build output, test results, IDE and assistant state,
+      # and the Reqnroll-generated code-behind.
+      - name: No generated or local files are tracked
+        working-directory: .
+        shell: bash
+        run: |
+          tracked=$(git ls-files aqa/restaurant-aqa-framework | grep -E '(^|/)(bin|obj|TestResults|\.vs|\.claude|\.codemie|\.tools)/|\.feature\.cs$|\.user$|\.suo$' || true)
+          if [ -n "$tracked" ]; then
+            echo "These files must not be committed:"
+            echo "$tracked"
+            exit 1
+          fi
+
+      - name: Restore
+        run: dotnet restore
+
+      # Whitespace, code style and analyzer rules from .editorconfig.
+      - name: Format
+        run: dotnet format restaurant-aqa-framework.csproj --verify-no-changes --no-restore
+
+      # Compiles the step definitions and the Reqnroll-generated feature code; the project treats
+      # analyzer warnings as errors, so this is also the static-analysis gate.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Gherkin lint
+        run: npx --yes gherkin-lint -c .gherkin-lintrc "Features/*.feature"
+
+      # Test discovery proves every feature/step binding loads without touching the live environment.
+      - name: List tests
+        run: dotnet bin/Release/net10.0/restaurant-aqa-framework.dll --list-tests

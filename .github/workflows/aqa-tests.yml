@@ -1,0 +1,219 @@
+name: AQA Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Which scenarios to run"
+        type: choice
+        options:
+          - all
+          - ui
+          - api
+        default: all
+      custom_filter:
+        description: >
+          Optional Microsoft.Testing.Platform tree filter (overrides "scope" when set), e.g.
+          /*/*/*/*[Category=smoke] to run only @smoke-tagged scenarios. See
+          https://learn.microsoft.com/dotnet/core/testing/microsoft-testing-platform-filters
+        type: string
+        default: ""
+
+  # The scenarios run against the deployed environment and take minutes, so they are not tied to
+  # pushes or pull requests (those run the fast checks in aqa-quality.yml). They run on demand and nightly,
+  # which catches regressions in the environment itself even on days nobody touched the tests.
+  schedule:
+    - cron: "0 2 * * *"
+
+concurrency:
+  group: aqa-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: aqa/restaurant-aqa-framework
+    env:
+      HEADLESS: "true"
+      # Default anyway (Configuration/Settings.cs) - set explicitly so the choice is visible here:
+      # a trace is only captured for a failed @ui scenario (or one tagged @trace-always).
+      TRACE_MODE: "OnFailureOnly"
+    steps:
+      - uses: actions/checkout@v5
+
+      # Configuration reaches the tests as real environment variables. A repository variable/secret
+      # (Settings -> Secrets and variables -> Actions) wins when it is set; anything not provided
+      # falls back to a local `.env` if one exists (it is never committed, so in CI it normally does not),
+      # and an unset value stays unset. Credentials are masked in the log.
+      - name: Configure environment
+        shell: bash
+        env:
+          AQA_UI_URL: ${{ vars.AQA_UI_URL }}
+          AQA_API_URL: ${{ vars.AQA_API_URL }}
+          AQA_TESTTABLE_ID: ${{ vars.AQA_TESTTABLE_ID }}
+          AQA_WAITER_USERNAME: ${{ secrets.AQA_WAITER_USERNAME }}
+          AQA_WAITER_PASSWORD: ${{ secrets.AQA_WAITER_PASSWORD }}
+          AQA_ADMIN_USERNAME: ${{ secrets.AQA_ADMIN_USERNAME }}
+          AQA_ADMIN_PASSWORD: ${{ secrets.AQA_ADMIN_PASSWORD }}
+          AQA_TESTTABLE_WAITER_USERNAME: ${{ secrets.AQA_TESTTABLE_WAITER_USERNAME }}
+          AQA_TESTTABLE_WAITER_PASSWORD: ${{ secrets.AQA_TESTTABLE_WAITER_PASSWORD }}
+        run: |
+          declare -A dotenv
+          if [ -f .env ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+              if [[ -z "$line" || "$line" == \#* || "$line" != *=* ]]; then continue; fi
+              key="${line%%=*}"; value="${line#*=}"
+              value="${value%\"}"; value="${value#\"}"
+              dotenv["$key"]="$value"
+            done < <(tr -d '\r' < .env)
+          fi
+
+          pairs="
+          UI_URL:AQA_UI_URL
+          API_URL:AQA_API_URL
+          TESTTABLE_ID:AQA_TESTTABLE_ID
+          WAITER_USERNAME:AQA_WAITER_USERNAME
+          WAITER_PASSWORD:AQA_WAITER_PASSWORD
+          ADMIN_USERNAME:AQA_ADMIN_USERNAME
+          ADMIN_PASSWORD:AQA_ADMIN_PASSWORD
+          TESTTABLE_WAITER_USERNAME:AQA_TESTTABLE_WAITER_USERNAME
+          TESTTABLE_WAITER_PASSWORD:AQA_TESTTABLE_WAITER_PASSWORD
+          "
+          for pair in $pairs; do
+            name="${pair%%:*}"; provided="${pair##*:}"
+            value="${!provided:-}"
+            if [ -z "$value" ]; then value="${dotenv[$name]:-}"; fi
+            if [ -z "$value" ]; then echo "$name: not set"; continue; fi
+            case "$name" in *USERNAME|*PASSWORD) echo "::add-mask::$value" ;; esac
+            echo "$name=$value" >> "$GITHUB_ENV"
+            echo "$name: set"
+          done
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Resolve test filter
+        id: filter
+        shell: bash
+        run: |
+          custom_filter="${{ inputs.custom_filter }}"
+          scope="${{ inputs.scope || 'all' }}"
+
+          if [ -n "$custom_filter" ]; then
+            filter="$custom_filter"
+          elif [ "$scope" = "ui" ]; then
+            filter="/*/*/*/*[Category=ui]"
+          elif [ "$scope" = "api" ]; then
+            filter="/*/*/*/*[Category=api]"
+          else
+            filter=""
+          fi
+
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+
+      # A failed test must never stop the pipeline: artifact/report/summary steps below all run
+      # with `if: always()` so they still publish when this step reports a failure.
+      - name: Run tests
+        id: run_tests
+        continue-on-error: true
+        run: |
+          if [ -n "${{ steps.filter.outputs.filter }}" ]; then
+            dotnet bin/Release/net10.0/restaurant-aqa-framework.dll --report-trx \
+              --results-directory TestResults --treenode-filter "${{ steps.filter.outputs.filter }}"
+          else
+            dotnet bin/Release/net10.0/restaurant-aqa-framework.dll --report-trx \
+              --results-directory TestResults
+          fi
+
+      - name: Upload TUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunit-report
+          path: |
+            aqa/restaurant-aqa-framework/TestResults/*-report.html
+            aqa/restaurant-aqa-framework/TestResults/*.trx
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Reqnroll report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reqnroll-report
+          path: aqa/restaurant-aqa-framework/TestResults/reqnroll/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ScenarioStageHooks.HandleTrace writes each captured trace to TestResults/traces/ next to the
+      # TUnit and Reqnroll reports (Core/ArtifactPaths.cs) - open one with
+      # `npx playwright show-trace <file>.zip` for a full post-mortem replay (DOM snapshots, network,
+      # console) of the failing @ui scenario. Only present when a @ui scenario actually failed (or
+      # was tagged @trace-always), so "no files" is expected, not an error, on an @api-only or
+      # all-green run.
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: aqa/restaurant-aqa-framework/TestResults/traces/*.zip
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Always runs, whatever the test step did: counts and failed scenarios come from the TRX the
+      # run wrote, so the summary stays useful for a red run and says so plainly when the test
+      # process died before producing any results.
+      - name: Write job summary
+        if: always()
+        env:
+          SCOPE: ${{ inputs.scope || 'all' }}
+          FILTER: ${{ steps.filter.outputs.filter }}
+          RUN_OUTCOME: ${{ steps.run_tests.outcome }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, os
+          import xml.etree.ElementTree as ET
+
+          print("## AQA test run\n")
+          print(f"- Scope: `{os.environ['SCOPE']}`")
+          print(f"- Filter: `{os.environ['FILTER'] or '(none - all scenarios)'}`")
+
+          files = glob.glob("TestResults/*.trx")
+          if not files:
+              print("- Result: ❌ **no results were produced** - the test process stopped before writing a report")
+              raise SystemExit
+
+          root = ET.parse(files[0]).getroot()
+          ns = {"t": root.tag.split("}")[0].strip("{")}
+          counters = root.find(".//t:ResultSummary/t:Counters", ns).attrib
+          failed = [r.get("testName") for r in root.findall(".//t:UnitTestResult", ns) if r.get("outcome") == "Failed"]
+          skipped = int(counters["notExecuted"])
+          icon = "✅" if os.environ["RUN_OUTCOME"] == "success" else "❌"
+          print(f"- Result: {icon} {'passed' if icon == '✅' else 'failed'}\n")
+          print("| Total | Passed | Failed | Skipped |")
+          print("|---:|---:|---:|---:|")
+          print(f"| {counters['total']} | {counters['passed']} | {counters['failed']} | {skipped} |\n")
+          if failed:
+              print("### Failed scenarios\n")
+              for name in failed:
+                  print(f"- {name}")
+              print()
+          print("Reports, traces and the TRX are attached to this run as artifacts.")
+          PY
+
+      - name: Fail the job if tests failed
+        if: always() && steps.run_tests.outcome != 'success'
+        run: exit 1

@@ -1,0 +1,86 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Run syndicate deploy instead of update'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP_DIR: backend/restaurant-backend-app
+  AWS_REGION: us-west-2
+  DEPLOY_NAME: dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: syndicate-${{ github.run_id }}
+
+      - name: Verify identity
+        run: aws sts get-caller-identity
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-syndicate-${{ runner.os }}
+
+      - name: Install AWS Syndicate
+        run: pip install aws-syndicate
+
+      - name: Syndicate build
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          SDCT_CONF: .syndicate-config-restaurant-backend-app
+        run: syndicate build
+
+      - name: Syndicate deploy
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy }}
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          SDCT_CONF: .syndicate-config-restaurant-backend-app
+        run: syndicate deploy --deploy_name ${{ env.DEPLOY_NAME }}
+
+      - name: Syndicate update
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy) }}
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          SDCT_CONF: .syndicate-config-restaurant-backend-app
+        run: syndicate update
