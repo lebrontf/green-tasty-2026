@@ -141,6 +141,16 @@
           >
             Edit
           </button>
+
+          @if (r().guestCount >= 2) {
+            <button
+              type="button"
+              class="button button--primary button--large"
+              (click)="onGroupPreOrder()"
+            >
+              Group Pre-Order
+            </button>
+          }
         }
 
         @if (role() === Roles.WAITER) {

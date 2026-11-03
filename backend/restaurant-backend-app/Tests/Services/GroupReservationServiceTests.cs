@@ -249,4 +249,59 @@ public class GroupReservationServiceTests
 
         await Assert.ThrowsAsync(type, () => _service.GetGroupReservationInviteTokenAsync(reservation.Id));
     }
+
+    [Theory]
+    [InlineAutoData(GroupReservationStatus.Open)]
+    [InlineAutoData(GroupReservationStatus.Submitted)]
+    public async Task GetGroupReservationForOwnerAsync_Owner_ReturnsInfoForAnyGroupStatus(
+        GroupReservationStatus status,
+        GroupReservation groupReservation,
+        Reservation reservation,
+        Table table,
+        Location location,
+        string ownerId)
+    {
+        groupReservation.Status = status;
+        reservation.CustomerId = ownerId;
+        reservation.TableId = table.Id;
+        table.LocationId = location.Id;
+
+        _reservationRepositoryMock.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+        _groupReservationRepositoryMock.Setup(r => r.GetByReservationIdAsync(reservation.Id)).ReturnsAsync(groupReservation);
+        _tableRepositoryMock.Setup(r => r.GetTableAsync(table.Id)).ReturnsAsync(table);
+        _locationServiceMock.Setup(s => s.GetLocationByIdAsync(location.Id)).ReturnsAsync(location);
+
+        var result = await _service.GetGroupReservationForOwnerAsync(ownerId, reservation.Id);
+
+        Assert.Equal(groupReservation.GroupReservationId, result.GroupReservationId);
+        Assert.Equal(location.Address, result.LocationAddress);
+        Assert.Equal(reservation.GuestCount, result.MaxGuestCount);
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetGroupReservationForOwnerAsync_NotOwner_ThrowsActionForbiddenException(
+        Reservation reservation,
+        string ownerId,
+        string otherUserId)
+    {
+        reservation.CustomerId = ownerId;
+        _reservationRepositoryMock.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+
+        await Assert.ThrowsAsync<ActionForbiddenException>(
+            () => _service.GetGroupReservationForOwnerAsync(otherUserId, reservation.Id));
+    }
+
+    [Theory]
+    [AutoData]
+    public async Task GetGroupReservationForOwnerAsync_GroupNotFound_ThrowsGroupReservationNotFoundException(
+        Reservation reservation,
+        string ownerId)
+    {
+        reservation.CustomerId = ownerId;
+        _reservationRepositoryMock.Setup(r => r.GetReservationByIdAsync(reservation.Id)).ReturnsAsync(reservation);
+
+        await Assert.ThrowsAsync<GroupReservationNotFoundException>(
+            () => _service.GetGroupReservationForOwnerAsync(ownerId, reservation.Id));
+    }
 }

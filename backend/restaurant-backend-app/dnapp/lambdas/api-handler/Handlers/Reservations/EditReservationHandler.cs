@@ -7,6 +7,7 @@ using APIHandler.Helpers;
 using APIHandler.Mappers;
 using APIHandler.Models.Reservations;
 using APIHandler.Models.Users;
+using APIHandler.Services.GroupReservations;
 using APIHandler.Services.Locations;
 using System;
 using System.Linq;
@@ -23,11 +24,16 @@ public class EditReservationHandler : IApiRequestHandler
 
     private readonly IDynamoDBContext _dbContext;
     private readonly ILocationService _locationService;
+    private readonly IGroupReservationService _groupReservationService;
 
-    public EditReservationHandler(IDynamoDBContext dbContext, ILocationService locationService)
+    public EditReservationHandler(
+        IDynamoDBContext dbContext,
+        ILocationService locationService,
+        IGroupReservationService groupReservationService)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _locationService = locationService ?? throw new ArgumentNullException(nameof(locationService));
+        _groupReservationService = groupReservationService ?? throw new ArgumentNullException(nameof(groupReservationService));
     }
 
     public async Task<APIGatewayProxyResponse> HandleRequest(APIGatewayProxyRequest request, ILambdaContext context)
@@ -96,6 +102,11 @@ public class EditReservationHandler : IApiRequestHandler
         {
             context.Logger.LogError($"[ERROR] Failed to save reservation: {saveError}");
             return ResponseBuilder.CreateErrorResponse(500, "Failed to save reservation", context.Logger);
+        }
+
+        if (reservation.GuestCount >= 2 && reservation.Status == ReservationStatus.Reserved)
+        {
+            await _groupReservationService.CreateGroupReservationIfDoesNotExistAsync(userId, reservation.Id);
         }
 
         var location = await TryGetLocationAsync(table.Id);

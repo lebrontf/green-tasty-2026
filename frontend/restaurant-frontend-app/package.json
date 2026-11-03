@@ -17,6 +17,7 @@
     "start": "ng serve",
     "prebuild": "node scripts/set-env.mjs",
     "build": "ng build",
+    "test:hw": "ng test --watch=false --include src/app/components/group-orders --include src/app/pages/group-order-page --include src/app/services/group-orders --include src/app/shared/helpers",
     "postbuild": "node scripts/check-bundle.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
