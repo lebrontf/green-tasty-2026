@@ -9,9 +9,11 @@ import { GroupReservationStatus } from '@app/models/group-orders/group-status.mo
 import { Participant } from '@app/models/group-orders/participant.model';
 import { GuestInvite } from '@app/models/reservations/guest-invite.model';
 import { GroupOrdersService } from '@app/services/group-orders/group-orders.service';
+import { GuestInviteService } from '@app/services/reservation/guest-invite.service';
 import { ToastService } from '@app/services/toast/toast.service';
 import { ModalComponent } from '@app/shared/custom-components/modal/modal.component';
 import { consolidatePreOrder } from '@app/shared/helpers/consolidate-pre-order';
+import { copyInputValue } from '@app/shared/helpers/copy-input-value';
 
 type LoadState = 'loading' | 'ready' | 'not-found' | 'error';
 
@@ -31,6 +33,7 @@ const STATUS_LABELS: Record<GroupReservationStatus, string> = {
 export class GroupOrderPageComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly service = inject(GroupOrdersService);
+  private readonly guestInviteService = inject(GuestInviteService);
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -43,6 +46,7 @@ export class GroupOrderPageComponent implements OnInit {
   readonly status = signal<GroupReservationStatus>('Open');
   readonly confirmOpen = signal(false);
   readonly submitting = signal(false);
+  readonly inviteLink = signal<string | null>(null);
 
   // Only submitted carts go to the restaurant, so this is not the API's own total.
   readonly consolidated = computed(() => consolidatePreOrder(this.participants()));
@@ -83,10 +87,34 @@ export class GroupOrderPageComponent implements OnInit {
           this.participants.set(sessions.participants);
           this.status.set(groupStatus.status);
           this.state.set('ready');
+          if (groupStatus.status === 'Open') {
+            this.loadInviteLink();
+          }
         },
         error: (error: HttpErrorResponse) => {
           this.state.set(error.status === 404 ? 'not-found' : 'error');
         },
+      });
+  }
+
+  async copyInviteLink(input: HTMLInputElement): Promise<void> {
+    try {
+      await copyInputValue(input);
+      this.toast.success('Share it with your friends.', 'Link copied!');
+    } catch {
+      this.toast.error('Could not copy the link. Please copy it manually.');
+    }
+  }
+
+  // Fetched up front because the copy command has to run directly in the click handler.
+  private loadInviteLink(): void {
+    this.guestInviteService
+      .getInviteToken$(this.reservationId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ token }) => this.inviteLink.set(`${window.location.origin}/join/${token}`),
+        // tokenInterceptor already shows the API's message; the rest of the screen still works.
+        error: () => this.inviteLink.set(null),
       });
   }
 

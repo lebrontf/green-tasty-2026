@@ -1,7 +1,8 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { GroupInviteToken, GuestInvite } from '@app/models/reservations/guest-invite.model';
+import { SKIP_ERROR_TOAST } from '@app/auth/skip-error-toast.context';
 import { API_BASE_URL } from '@app/shared/config/api-base-url.token';
 
 @Injectable({
@@ -18,6 +19,9 @@ export class GuestInviteService {
   }
 
   getInvite$(token: string): Observable<GuestInvite> {
-    return this.http.get<GuestInvite>(`${this.baseUrl}/guest/invites/${encodeURIComponent(token)}`);
+    // The guest page shows its own screen for every invite error.
+    return this.http.get<GuestInvite>(`${this.baseUrl}/guest/invites/${encodeURIComponent(token)}`, {
+      context: new HttpContext().set(SKIP_ERROR_TOAST, true),
+    });
   }
 }

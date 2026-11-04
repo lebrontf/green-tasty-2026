@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
 import { GroupOrdersService } from '@app/services/group-orders/group-orders.service';
+import { GuestInviteService } from '@app/services/reservation/guest-invite.service';
 import { ToastService } from '@app/services/toast/toast.service';
 import { GroupSessionsResponse } from '@app/models/group-orders/group-sessions-response.model';
 import { GuestInvite } from '@app/models/reservations/guest-invite.model';
@@ -35,12 +36,14 @@ function buttonByText(root: ParentNode, text: string): HTMLButtonElement | undef
 
 describe('Рівень 2 · сторінка Owner Review', () => {
   let service: jasmine.SpyObj<GroupOrdersService>;
+  let guestInvite: jasmine.SpyObj<GuestInviteService>;
 
   function create() {
     TestBed.configureTestingModule({
       imports: [GroupOrderPageComponent],
       providers: [
         { provide: GroupOrdersService, useValue: service },
+        { provide: GuestInviteService, useValue: guestInvite },
         { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['success', 'error', 'info']) },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ reservationId: 'res-1' }) } } },
       ],
@@ -54,6 +57,8 @@ describe('Рівень 2 · сторінка Owner Review', () => {
     service = jasmine.createSpyObj<GroupOrdersService>('GroupOrdersService', [
       'getGroupInvite$', 'getSessions$', 'getOwnerSessionId$', 'getStatus$', 'submit$',
     ]);
+    guestInvite = jasmine.createSpyObj<GuestInviteService>('GuestInviteService', ['getInviteToken$']);
+    guestInvite.getInviteToken$.and.returnValue(of({ token: 'abc123' }));
     service.getGroupInvite$.and.returnValue(of(INVITE));
     service.getSessions$.and.returnValue(of(structuredClone(SESSIONS)));
     service.getOwnerSessionId$.and.returnValue(of('owner'));
@@ -114,6 +119,57 @@ describe('Рівень 2 · сторінка Owner Review', () => {
       buttonByText(element, 'Try again')?.click();
       fixture.detectChanges();
       expect(service.getGroupInvite$).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Invite Link', () => {
+    const copyButton = (root: ParentNode) => root.querySelector<HTMLButtonElement>('button[aria-label="Copy invite link"]');
+
+    it('показує посилання, поки група відкрита', () => {
+      const { element } = create();
+
+      expect(guestInvite.getInviteToken$).toHaveBeenCalledWith('res-1');
+      expect(element.querySelector<HTMLInputElement>('#group-invite-link')?.value).toBe(`${window.location.origin}/join/abc123`);
+    });
+
+    it('копіює посилання і показує toast', async () => {
+      const writeText = spyOn(navigator.clipboard, 'writeText').and.resolveTo();
+      const { fixture, element } = create();
+      const toast = TestBed.inject(ToastService) as jasmine.SpyObj<ToastService>;
+
+      copyButton(element)!.click();
+      await fixture.whenStable();
+
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/join/abc123`);
+      expect(toast.success).toHaveBeenCalledWith('Share it with your friends.', 'Link copied!');
+    });
+
+    it('показує помилку, якщо скопіювати не вдалось', async () => {
+      spyOn(navigator.clipboard, 'writeText').and.rejectWith(new Error('denied'));
+      const { fixture, element } = create();
+      const toast = TestBed.inject(ToastService) as jasmine.SpyObj<ToastService>;
+
+      copyButton(element)!.click();
+      await fixture.whenStable();
+
+      expect(toast.error).toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('не запитує посилання, коли замовлення вже надіслано', () => {
+      service.getStatus$.and.returnValue(of({ currentParticipants: 3, maxCapacity: 5, status: 'Submitted' as const }));
+      const { element } = create();
+
+      expect(guestInvite.getInviteToken$).not.toHaveBeenCalled();
+      expect(copyButton(element)).toBeNull();
+    });
+
+    it('екран працює, навіть якщо посилання не завантажилось', () => {
+      guestInvite.getInviteToken$.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      const { element } = create();
+
+      expect(copyButton(element)).toBeNull();
+      expect(buttonByText(element, 'Submit Pre-Order')).toBeDefined();
     });
   });
 

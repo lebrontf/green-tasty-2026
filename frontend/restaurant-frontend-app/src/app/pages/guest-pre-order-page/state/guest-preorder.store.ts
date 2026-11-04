@@ -8,6 +8,8 @@ import { GuestSessionsService } from '@app/services/guest-sessions/guest-session
 
 export type GuestPreorderStatus = 'active' | 'submitted';
 
+const GUEST_LIMIT_EXCEEDED = 'GuestLimitExceeded';
+
 export interface GuestInviteVm {
     inviterName: string;
     restaurantName: string;
@@ -33,7 +35,7 @@ export class GuestPreorderStore {
 
     readonly invite = signal<GuestInvite | null>(null);
     readonly inviteLoading = signal(false);
-    readonly inviteError = signal<'expired' | 'retryable' | null>(null);
+    readonly inviteError = signal<'expired' | 'retryable' | 'full' | null>(null);
 
     readonly guestName = signal<string>('');
     readonly status = signal<GuestPreorderStatus>('active');
@@ -118,11 +120,21 @@ export class GuestPreorderStore {
             this.invite.set(inv);
         } catch (error) {
             this.invite.set(null);
-            const status = error instanceof HttpErrorResponse ? error.status : null;
-            this.inviteError.set(status === 404 || status === 410 ? 'expired' : 'retryable');
+            this.inviteError.set(this.toInviteError(error));
         } finally {
             this.inviteLoading.set(false);
         }
+    }
+
+    private toInviteError(error: unknown): 'expired' | 'retryable' | 'full' | null {
+        const response = error instanceof HttpErrorResponse ? error : null;
+        if (response?.status === 404 || response?.status === 410) return 'expired';
+        if (response?.error?.errorCode !== GUEST_LIMIT_EXCEEDED) return 'retryable';
+
+        // A full group blocks only new guests. Submitting clears the saved name, so a guest
+        // with a name and a session still has an unfinished cart.
+        const canContinue = this.guestSessionId() && this.guestSessionToken() && this.guestName();
+        return canContinue ? null : 'full';
     }
 
     async join(name: string) {

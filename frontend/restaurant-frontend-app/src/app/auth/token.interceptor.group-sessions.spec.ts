@@ -1,8 +1,9 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { ToastService } from '../services/toast/toast.service';
 import { AuthenticationService } from './services/authentication.service';
+import { SKIP_ERROR_TOAST } from './skip-error-toast.context';
 import { tokenInterceptor } from './token.interceptor';
 
 describe('tokenInterceptor: owner group sessions', () => {
@@ -48,5 +49,25 @@ describe('tokenInterceptor: owner group sessions', () => {
     expect(authorizationFor('https://api.test/guest/sessions/guest-1/menu')).toBeNull();
     expect(authorizationFor('https://api.test/guest/groups/grp-1/status')).toBeNull();
     expect(authorizationFor('https://api.test/guest/invites/token')).toBeNull();
+  });
+
+  describe('guest endpoint errors', () => {
+    const url = 'https://api.test/guest/invites/token';
+    const failWith400 = (context?: HttpContext) => {
+      http.get(url, { context }).subscribe({ error: () => undefined });
+      controller.expectOne(url).flush({ message: 'Guest limit exceeded' }, { status: 400, statusText: 'Bad Request' });
+    };
+
+    it('shows a toast by default', () => {
+      failWith400();
+
+      expect(TestBed.inject(ToastService).error).toHaveBeenCalled();
+    });
+
+    it('stays silent when the caller handles the error itself', () => {
+      failWith400(new HttpContext().set(SKIP_ERROR_TOAST, true));
+
+      expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+    });
   });
 });

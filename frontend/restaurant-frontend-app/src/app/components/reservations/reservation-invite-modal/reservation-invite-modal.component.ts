@@ -18,6 +18,7 @@ import { Reservation } from '@app/models/reservations/reservation.model';
 import { GuestInviteService } from '@app/services/reservation/guest-invite.service';
 import { ToastService } from '@app/services/toast/toast.service';
 import { ModalComponent } from '@app/shared/custom-components/modal/modal.component';
+import { copyInputValue } from '@app/shared/helpers/copy-input-value';
 
 const MIN_GUESTS_FOR_INVITE = 2;
 
@@ -90,28 +91,16 @@ export class ReservationInviteModalComponent implements OnInit {
   }
 
   async onCopyLink(): Promise<void> {
-    const link = this.inviteLink();
-    if (!link) {
+    const input = this.inviteInput()?.nativeElement;
+    if (!this.inviteLink() || !input) {
       return;
     }
 
     try {
-      // navigator.clipboard is undefined on plain HTTP, e.g. the S3 website endpoint.
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(link);
-      } else {
-        this.copyFromInviteInput();
-      }
+      await copyInputValue(input);
       this.toastService.success('Share it with your friends.', 'Link copied!');
     } catch {
       this.toastService.error('Could not copy the link. Please copy it manually.');
-    }
-  }
-
-  private copyFromInviteInput(): void {
-    this.inviteInput()?.nativeElement.select();
-    if (!document.execCommand('copy')) {
-      throw new Error('The browser rejected the copy command.');
     }
   }
 

@@ -41,6 +41,24 @@
         }
       </header>
 
+      @if (isOpen() && inviteLink()) {
+        <section class="invite">
+          <label class="invite-label" for="group-invite-link">Invite Link</label>
+          <div class="invite-input">
+            <input #inviteInput id="group-invite-link" type="text" readonly [value]="inviteLink()" />
+            <button
+              type="button"
+              class="icon-button icon-button--small"
+              aria-label="Copy invite link"
+              (click)="copyInviteLink(inviteInput)"
+            >
+              <img src="assets/svg/copy.svg" alt="" />
+            </button>
+          </div>
+          <p class="invite-hint">Guests who already joined can reopen this link in the same browser to finish their order.</p>
+        </section>
+      }
+
       @if (isOpen() && pendingCount() > 0) {
         <p class="warning" role="status">
           @if (pendingCount() === 1) {

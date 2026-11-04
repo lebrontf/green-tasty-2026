@@ -64,6 +64,51 @@
   }
 }
 
+.invite {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.invite-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.invite-input {
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  background: rgba(color.$green-100, 0.6);
+  border: 1px solid color.$green-150;
+  border-radius: 8px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 14px;
+    line-height: 24px;
+    color: color.$neutral-900;
+    text-overflow: ellipsis;
+    background: none;
+    border: none;
+    outline: none;
+  }
+}
+
+.invite-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: color.$neutral-600;
+}
+
 .message {
   margin: 0;
   color: color.$neutral-700;

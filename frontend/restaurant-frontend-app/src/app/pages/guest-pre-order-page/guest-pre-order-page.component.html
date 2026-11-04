@@ -10,6 +10,12 @@
         {{ store.inviteLoading() ? 'Retrying...' : 'Try again' }}
     </button>
 </section>
+} @else if (store.inviteError() === 'full') {
+<section class="invite-retry" role="alert">
+    <h1>This group is full</h1>
+    <p>All guest places for this reservation are taken. If you already joined, open this link in the same browser to
+        finish your order. Otherwise, contact the person who invited you.</p>
+</section>
 } @else {
 <!-- green info strip + cart icon -->
 <div class="reservation-strip">
