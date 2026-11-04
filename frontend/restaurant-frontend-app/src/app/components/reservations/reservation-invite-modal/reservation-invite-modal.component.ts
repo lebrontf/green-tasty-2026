@@ -4,11 +4,13 @@ import {
   Component,
   computed,
   DestroyRef,
+  ElementRef,
   inject,
   input,
   OnInit,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
@@ -35,6 +37,8 @@ export class ReservationInviteModalComponent implements OnInit {
   readonly reservation = input.required<Reservation>();
 
   readonly closed = output<void>();
+
+  private readonly inviteInput = viewChild<ElementRef<HTMLInputElement>>('inviteInput');
 
   readonly showInviteField = computed(() => this.reservation().guestCount >= MIN_GUESTS_FOR_INVITE);
 
@@ -92,10 +96,22 @@ export class ReservationInviteModalComponent implements OnInit {
     }
 
     try {
-      await navigator.clipboard.writeText(link);
+      // navigator.clipboard is undefined on plain HTTP, e.g. the S3 website endpoint.
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        this.copyFromInviteInput();
+      }
       this.toastService.success('Share it with your friends.', 'Link copied!');
     } catch {
       this.toastService.error('Could not copy the link. Please copy it manually.');
+    }
+  }
+
+  private copyFromInviteInput(): void {
+    this.inviteInput()?.nativeElement.select();
+    if (!document.execCommand('copy')) {
+      throw new Error('The browser rejected the copy command.');
     }
   }
 

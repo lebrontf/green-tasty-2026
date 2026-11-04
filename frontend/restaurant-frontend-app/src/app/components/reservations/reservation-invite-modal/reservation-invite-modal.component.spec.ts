@@ -141,6 +141,39 @@ describe('ReservationInviteModalComponent', () => {
     expect(toastService.success).not.toHaveBeenCalled();
   });
 
+  describe('without the Clipboard API (plain HTTP)', () => {
+    beforeEach(() => {
+      spyOnProperty(navigator, 'clipboard').and.returnValue(undefined as unknown as Clipboard);
+    });
+
+    it('selects the link in the input and copies it', async () => {
+      render(BASE_RESERVATION);
+      const input = element.querySelector<HTMLInputElement>('#invite-link-input')!;
+      const execCommand = spyOn(document, 'execCommand').and.callFake(() => {
+        expect(input.value.substring(input.selectionStart!, input.selectionEnd!)).toBe(
+          `${window.location.origin}/join/abc123xyz`,
+        );
+        return true;
+      });
+
+      await component.onCopyLink();
+
+      expect(execCommand).toHaveBeenCalledOnceWith('copy');
+      expect(toastService.success).toHaveBeenCalledWith('Share it with your friends.', 'Link copied!');
+      expect(toastService.error).not.toHaveBeenCalled();
+    });
+
+    it('shows an error toast when the browser rejects the copy command', async () => {
+      render(BASE_RESERVATION);
+      spyOn(document, 'execCommand').and.returnValue(false);
+
+      await component.onCopyLink();
+
+      expect(toastService.error).toHaveBeenCalled();
+      expect(toastService.success).not.toHaveBeenCalled();
+    });
+  });
+
   it('closes and navigates to reservations on View Reservation', () => {
     render(BASE_RESERVATION);
     spyOn(component.closed, 'emit');
