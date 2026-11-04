@@ -309,3 +309,15 @@ aws s3api delete-bucket --bucket marathon2026-restaurant-artifacts-$ACCOUNT_ID -
 ```
 
 Only do this if you are sure you no longer need the stored Syndicate build artifacts.
+
+## Image credits
+
+Dish photos come from Wikimedia Commons. They were cropped to a square and resized to 800 px.
+
+| Dish | Source | Author | License |
+|---|---|---|---|
+| Grilled Salmon | [Salmon, pan-seared and glazed, with Brussels sprouts and root vegetables - Massachusetts.jpg](https://commons.wikimedia.org/wiki/File:Salmon,_pan-seared_and_glazed,_with_Brussels_sprouts_and_root_vegetables_-_Massachusetts.jpg) | Daderot | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Truffle Mushroom Risotto | [Mushroom and Leek Risotto (49535206656).jpg](https://commons.wikimedia.org/wiki/File:Mushroom_and_Leek_Risotto_(49535206656).jpg) | spurekar | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/) |
+| Green Salad | [Garden salad - San Francisco.jpg](https://commons.wikimedia.org/wiki/File:Garden_salad_-_San_Francisco.jpg) | Daderot | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| Margherita Pizza | [Pizza Margherita ピザ・マルゲリータ.jpg](https://commons.wikimedia.org/wiki/File:Pizza_Margherita_%E3%83%94%E3%82%B6%E3%83%BB%E3%83%9E%E3%83%AB%E3%82%B2%E3%83%AA%E3%83%BC%E3%82%BF.jpg) | ノボホショコロトソ | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Fresh Avocado Toast | [Smashed Avocado on Sourdough Toast with Chai Latte - M&S cafe 2023-08-08.jpg](https://commons.wikimedia.org/wiki/File:Smashed_Avocado_on_Sourdough_Toast_with_Chai_Latte_-_M%26S_cafe_2023-08-08.jpg) | Andy Li | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) |
